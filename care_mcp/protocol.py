@@ -210,6 +210,8 @@ def handle_prompts_get(ctx, params):
     if prompt is None:
         raise JSONRPCError(INVALID_PARAMS, f"Unknown prompt: {name}")
     arguments = params.get("arguments") or {}
+    if not isinstance(arguments, dict):
+        raise JSONRPCError(INVALID_PARAMS, "Prompt arguments must be an object.")
     missing = [
         a["name"]
         for a in prompt["arguments"]
@@ -252,10 +254,10 @@ def handle_message(ctx: ToolContext, message: Any) -> dict | None:  # noqa: PLR0
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
         return error_response(None, INVALID_REQUEST, "Invalid JSON-RPC 2.0 message.")
 
-    method = message.get("method")
-    if method is None:
+    if "method" not in message:
         # A response to a server-initiated request; this server sends none.
         return None
+    method = message["method"]
     if not isinstance(method, str):
         return error_response(
             message.get("id"), INVALID_REQUEST, "method must be a string."

@@ -6,7 +6,7 @@ from care.emr.models.allergy_intolerance import AllergyIntolerance
 from care.emr.models.condition import Condition
 from care.security.permissions.encounter import EncounterPermissions
 from care.security.permissions.patient import PatientPermissions
-from care_mcp import tools
+from care_mcp import openapi, tools
 from care_mcp.openapi import operations
 from care_mcp.settings import DEFAULT_READ_ONLY_OPERATIONS, DEFAULT_TOOLS
 from care_mcp.tests.base import MCPTestBase, plugin_config
@@ -23,6 +23,16 @@ class OperationIndexTests(MCPTestBase):
         configured = DEFAULT_READ_ONLY_OPERATIONS.split(",")
         self.assertEqual([op for op in configured if op not in index], [])
         self.assertTrue(all(index[op].method == "POST" for op in configured))
+
+    def test_bodies_are_json_only(self):
+        # MCP calls always send JSON, so an operation whose body can only be
+        # multipart or form data is left out of the index.
+        multipart = {
+            "requestBody": {"content": {"multipart/form-data": {"schema": {}}}}
+        }
+        self.assertFalse(openapi._accepts_json(multipart))  # noqa: SLF001
+        self.assertIsNone(openapi._json_body_schema(multipart))  # noqa: SLF001
+        self.assertTrue(openapi._accepts_json({}))  # noqa: SLF001
 
     def test_summaries_follow_the_view_action(self):
         index = operations()
@@ -198,6 +208,12 @@ class GeneratedToolTests(MCPTestBase):
         self.assertFalse(result["isError"])
         self.assertEqual(call.call_args.kwargs["query"], {"not_in_schema": "x"})
         self.assertIn("not_in_schema", result["content"][1]["text"])
+
+    def test_body_for_an_operation_without_one_is_flagged(self):
+        # A GET sends no body, so filters put there would be silently dropped.
+        result = self.call_tool("facility_list", {"body": {"name": "x"}}, self.token)
+        self.assertFalse(result["isError"])
+        self.assertIn("body", result["content"][1]["text"])
 
     def test_read_only_post_works_with_writes_off(self):
         data = self.tool_json(

@@ -91,10 +91,16 @@ class Resolver:
 
 def _json_body_schema(operation: dict):
     content = operation.get("requestBody", {}).get("content", {})
-    for media_type in ("application/json", *content):
-        if media_type in content:
-            return content[media_type].get("schema")
+    if "application/json" in content:
+        return content["application/json"].get("schema")
     return None
+
+
+def _accepts_json(operation: dict) -> bool:
+    """False when the request body can only be multipart or form data: MCP
+    calls always send JSON."""
+    content = operation.get("requestBody", {}).get("content")
+    return not content or "application/json" in content
 
 
 def _response_schema(operation: dict):
@@ -263,8 +269,10 @@ class Operation:
         return details
 
     def undeclared(self, arguments: dict) -> list[str]:
-        """Arguments that are not parameters in Care's schema for this operation."""
-        return sorted(set(arguments) - self.declared_params - {"body"})
+        """Arguments that are not parameters in Care's schema for this operation,
+        including a body for an operation that declares none."""
+        declared = self.declared_params | ({"body"} if self.body_schema else set())
+        return sorted(set(arguments) - declared)
 
     def search_text(self) -> str:
         names = " ".join(p["name"] for p in self.parameters)
@@ -297,6 +305,8 @@ def operations() -> dict[str, Operation]:
             continue
         for method, raw in item.items():
             if method not in METHODS or "operationId" not in raw:
+                continue
+            if not _accepts_json(raw):
                 continue
             op_id = short_id(raw["operationId"])
             if op_id in found:

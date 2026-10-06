@@ -1,7 +1,11 @@
+from unittest import mock
+
+from django.test import override_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from care_mcp.protocol import SUPPORTED_PROTOCOL_VERSIONS
 from care_mcp.tests.base import MCPTestBase, plugin_config
+from care_mcp.views import MAX_BATCH_MESSAGES
 
 
 class MCPAuthenticationTests(MCPTestBase):
@@ -134,6 +138,37 @@ class MCPProtocolTests(MCPTestBase):
         )
         self.assertEqual([r["id"] for r in response.json()], [1, 2])
 
+    def test_oversized_batch_is_rejected(self):
+        batch = [
+            {"jsonrpc": "2.0", "id": i, "method": "ping"}
+            for i in range(MAX_BATCH_MESSAGES + 1)
+        ]
+        response = self.post(batch, token=self.token)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"]["code"], -32600)
+
+    def test_each_batched_message_counts_against_the_rate_limit(self):
+        batch = [{"jsonrpc": "2.0", "id": i, "method": "ping"} for i in range(3)]
+        with (
+            override_settings(DISABLE_RATELIMIT=False),
+            mock.patch("care_mcp.views.is_ratelimited", return_value=False) as limited,
+        ):
+            self.assertEqual(self.post(batch, token=self.token).status_code, 200)
+        self.assertEqual(limited.call_count, 3)
+        with (
+            override_settings(DISABLE_RATELIMIT=False),
+            mock.patch(
+                "care_mcp.views.is_ratelimited", side_effect=[False, False, True]
+            ),
+        ):
+            self.assertEqual(self.post(batch, token=self.token).status_code, 429)
+
+    def test_null_method_is_invalid(self):
+        response = self.post(
+            {"jsonrpc": "2.0", "id": 1, "method": None}, token=self.token
+        )
+        self.assertEqual(response.json()["error"]["code"], -32600)
+
     def test_get_not_allowed(self):
         response = self.client.get(self.url, HTTP_AUTHORIZATION=f"Token {self.token}")
         self.assertEqual(response.status_code, 405)
@@ -153,6 +188,12 @@ class MCPProtocolTests(MCPTestBase):
             token=self.token,
         ).json()["result"]
         self.assertIn("abc", result["messages"][0]["content"]["text"])
+        response = self.rpc(
+            "prompts/get",
+            {"name": "patient_summary", "arguments": ["abc"]},
+            token=self.token,
+        )
+        self.assertEqual(response.json()["error"]["code"], -32602)
 
     def test_truncates_long_results(self):
         with plugin_config(CARE_MCP_MAX_RESPONSE_CHARS=100):

@@ -199,7 +199,7 @@ Resolution order: `PLUGIN_CONFIGS["care_mcp"][key]` → environment variable →
 | `CARE_MCP_TOOLS` | the operations above | Comma-separated operation ids that get a tool of their own |
 | `CARE_MCP_READ_ONLY_OPERATIONS` | patient search, value set lookups… | Comma-separated non-GET operation ids that only read data |
 | `CARE_MCP_MAX_RESPONSE_CHARS` | `50000` | Truncate longer tool results |
-| `CARE_MCP_RATE_LIMIT` | `120/m` | Per-user request limit; `""` disables it |
+| `CARE_MCP_RATE_LIMIT` | `120/m` | Per-user limit on MCP messages (each message in a batch counts); `""` disables it |
 | `CARE_MCP_ALLOWED_ORIGINS` | `""` | Comma-separated browser origins allowed to call the endpoint |
 
 ## Security notes

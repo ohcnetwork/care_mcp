@@ -24,6 +24,11 @@ from care_mcp.settings import plugin_settings, setting_list
 from care_mcp.tools import ToolContext
 from config.authentication import CustomJWTAuthentication
 
+# JSON-RPC batches (sent only by 2025-03-26 clients) are capped, and every
+# message in one counts against the rate limit, so a batch cannot multiply a
+# single request's allowance.
+MAX_BATCH_MESSAGES = 20
+
 
 class MCPView(APIView):
     """The MCP endpoint (Streamable HTTP transport, JSON responses).
@@ -55,6 +60,10 @@ class MCPView(APIView):
             raise ValidationError(
                 {"detail": f"Unsupported MCP-Protocol-Version: {version}"}
             )
+        self.check_rate_limit(request)
+
+    def check_rate_limit(self, request):
+        """Count one message against the caller's rate limit."""
         rate = plugin_settings.CARE_MCP_RATE_LIMIT
         if (
             rate
@@ -83,10 +92,14 @@ class MCPView(APIView):
         # JSON-RPC batches were dropped in protocol 2025-06-18 but older clients
         # may still send them.
         if isinstance(payload, list):
-            if not payload:
+            if not 0 < len(payload) <= MAX_BATCH_MESSAGES:
+                message = f"A batch must hold 1 to {MAX_BATCH_MESSAGES} messages."
                 return JsonResponse(
-                    error_response(None, INVALID_REQUEST, "Empty batch."), status=400
+                    error_response(None, INVALID_REQUEST, message), status=400
                 )
+            # initial() counted the first message; count the rest before any runs.
+            for _ in payload[1:]:
+                self.check_rate_limit(request)
             responses = [r for m in payload if (r := handle_message(ctx, m))]
             if not responses:
                 return HttpResponse(status=status.HTTP_202_ACCEPTED)
