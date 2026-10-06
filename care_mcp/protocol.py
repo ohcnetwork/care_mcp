@@ -134,6 +134,11 @@ def _truncate(text: str) -> str:
     return text
 
 
+def _is_request_id(value: Any) -> bool:
+    # MCP request ids are strings or integers, never null. bool is an int in Python.
+    return isinstance(value, str | int) and not isinstance(value, bool)
+
+
 def _as_object(value: Any, what: str) -> dict:
     """An optional object member of a message: absent or null means empty."""
     if value is None:
@@ -213,7 +218,7 @@ def handle_prompts_list(ctx, params):
 
 def handle_prompts_get(ctx, params):
     name = params.get("name")
-    prompt = PROMPTS.get(name)
+    prompt = PROMPTS.get(name) if isinstance(name, str) else None
     if prompt is None:
         raise JSONRPCError(INVALID_PARAMS, f"Unknown prompt: {name}")
     arguments = _as_object(params.get("arguments"), "Prompt arguments")
@@ -262,6 +267,10 @@ def handle_message(ctx: ToolContext, message: Any) -> dict | None:  # noqa: PLR0
     if "method" not in message:
         # A response to a server-initiated request; this server sends none.
         return None
+    if "id" in message and not _is_request_id(message["id"]):
+        return error_response(
+            None, INVALID_REQUEST, "id must be a string or an integer."
+        )
     method = message["method"]
     if not isinstance(method, str):
         return error_response(

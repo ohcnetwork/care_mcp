@@ -169,6 +169,19 @@ class MCPProtocolTests(MCPTestBase):
         )
         self.assertEqual(response.json()["error"]["code"], -32600)
 
+    def test_request_id_must_be_a_string_or_an_integer(self):
+        for id_ in (None, {}, [], True, 1.5):
+            body = self.post(
+                {"jsonrpc": "2.0", "id": id_, "method": "ping"}, token=self.token
+            ).json()
+            self.assertEqual(body["error"]["code"], -32600, id_)
+            self.assertIsNone(body["id"])
+        for id_ in ("abc", 0):
+            body = self.post(
+                {"jsonrpc": "2.0", "id": id_, "method": "ping"}, token=self.token
+            ).json()
+            self.assertEqual(body, {"jsonrpc": "2.0", "id": id_, "result": {}})
+
     def test_get_not_allowed(self):
         response = self.client.get(self.url, HTTP_AUTHORIZATION=f"Token {self.token}")
         self.assertEqual(response.status_code, 405)
@@ -217,6 +230,8 @@ class MCPProtocolTests(MCPTestBase):
             {"name": "patient_summary", "arguments": ["abc"]},
             token=self.token,
         )
+        self.assertEqual(response.json()["error"]["code"], -32602)
+        response = self.rpc("prompts/get", {"name": ["abc"]}, token=self.token)
         self.assertEqual(response.json()["error"]["code"], -32602)
 
     def test_truncates_long_results(self):

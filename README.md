@@ -45,7 +45,7 @@ MCP client ──POST /api/care_mcp/mcp/──▶ MCPView (auth, origin check, r
 
 ## Install
 
-Add the plug to Care's `plug_config.py`:
+Add the plugin to Care's `plug_config.py`:
 
 ```python
 care_mcp = Plug(
