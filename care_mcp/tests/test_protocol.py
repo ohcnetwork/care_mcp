@@ -267,6 +267,21 @@ class MCPProtocolTests(MCPTestBase):
             self.assertIn(f"user={account.external_id}", message)
             self.assertNotIn("allergy", message)
 
+    def test_internal_errors_are_logged_without_their_message(self):
+        def failing_ping(ctx, params):
+            msg = f"bad value {params['patient']}"
+            raise KeyError(msg)
+
+        with (
+            mock.patch.dict("care_mcp.protocol.METHODS", {"ping": failing_ping}),
+            self.assertLogs("care_mcp.protocol", "ERROR") as logs,
+        ):
+            response = self.rpc("ping", {"patient": "Ravi Kumar"}, token=self.token)
+        self.assertEqual(response.json()["error"]["code"], -32603)
+        self.assertIsNone(logs.records[0].exc_info)
+        self.assertIn("builtins.KeyError (message not logged)", logs.output[0])
+        self.assertNotIn("Ravi Kumar", logs.output[0])
+
     def test_truncates_long_results(self):
         with plugin_config(CARE_MCP_MAX_RESPONSE_CHARS=100):
             result = self.call_tool(

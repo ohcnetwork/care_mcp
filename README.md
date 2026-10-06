@@ -216,7 +216,8 @@ Resolution order: `PLUGIN_CONFIGS["care_mcp"][key]` → environment variable →
   connection (DNS rebinding). Desktop and CLI clients send no `Origin`.
 - Every call of one of the server's tools is logged, including calls with invalid
   arguments (`care_mcp` logger: tool, user, outcome). Arguments and request paths
-  are not logged, since they hold patient and encounter ids.
+  are not logged, since they hold patient and encounter ids. Unexpected errors are
+  logged with their stack but not their message, which can quote request data.
 - Changes made through MCP run through Care's own views as the service account,
   so Care records them as that account's.
 - When a write fails, its database changes are rolled back. Effects outside the

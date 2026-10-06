@@ -12,6 +12,7 @@ credentials of its own, and the response is rendered to plain JSON types.
 
 import json
 import logging
+import traceback
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
@@ -57,6 +58,18 @@ class APIResult:
     @property
     def ok(self) -> bool:
         return 200 <= self.status_code < 300  # noqa: PLR2004
+
+
+def redacted_traceback(exc: BaseException) -> str:
+    """A traceback without the exception's message, which can quote request data
+    (a database IntegrityError quotes the conflicting values, for example). The
+    exception class and the stack are enough to find the failing code."""
+    cls = type(exc)
+    return (
+        "Traceback (most recent call last):\n"
+        + "".join(traceback.format_tb(exc.__traceback__))
+        + f"{cls.__module__}.{cls.__qualname__} (message not logged)"
+    )
 
 
 def is_blocked_path(path: str) -> bool:
@@ -149,13 +162,14 @@ def call_api(
             if response.status_code >= 400:  # noqa: PLR2004
                 # Undo anything a failing write view did before it errored.
                 transaction.set_rollback(True)
-    except Exception:
+    except Exception as e:
         # The route's name rather than the path, whose segments are patient and
-        # encounter ids.
-        logger.exception(
-            "care_mcp: internal API call failed: %s %s",
+        # encounter ids, and no exception message (see redacted_traceback).
+        logger.error(
+            "care_mcp: internal API call failed: %s %s\n%s",
             method.upper(),
             match.view_name,
+            redacted_traceback(e),
         )
         return APIResult(500, {"detail": "Care returned a server error."})
     return APIResult(response.status_code, data)

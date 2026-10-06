@@ -353,11 +353,12 @@ class WriteTests(MCPTestBase):
 
 
 class DispatchTests(MCPTestBase):
-    def test_failed_call_logs_the_route_not_the_path(self):
+    def test_failed_call_logs_neither_the_path_nor_the_error_message(self):
         patient_id = "5a1c2b3d-0000-4000-8000-000000000001"
 
         def failing_view(request, *args, **kwargs):
-            raise RuntimeError
+            msg = f"duplicate key value: Ravi Kumar {patient_id}"
+            raise RuntimeError(msg)
 
         match = ResolverMatch(
             failing_view, (), {"external_id": patient_id}, url_name="patient-detail"
@@ -370,6 +371,10 @@ class DispatchTests(MCPTestBase):
                 self.create_user(), "get", f"/api/v1/patient/{patient_id}/"
             )
         self.assertEqual(result.status_code, 500)
-        message = logs.records[0].getMessage()
-        self.assertIn("GET patient-detail", message)
-        self.assertNotIn(patient_id, message)
+        self.assertIsNone(logs.records[0].exc_info)
+        logged = logs.output[0]
+        self.assertIn("GET patient-detail", logged)
+        self.assertIn("in failing_view", logged)
+        self.assertIn("builtins.RuntimeError (message not logged)", logged)
+        self.assertNotIn(patient_id, logged)
+        self.assertNotIn("Ravi Kumar", logged)

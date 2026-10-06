@@ -11,6 +11,7 @@ import logging
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
+from care_mcp.dispatch import redacted_traceback
 from care_mcp.settings import plugin_settings
 from care_mcp.tools import (
     ToolContext,
@@ -301,7 +302,8 @@ def handle_message(ctx: ToolContext, message: Any) -> dict | None:  # noqa: PLR0
         result = handler(ctx, _as_object(message.get("params"), "params"))
     except JSONRPCError as e:
         return error_response(id_, e.code, e.message, e.data)
-    except Exception:
-        logger.exception("care_mcp: %s failed", method)
+    except Exception as e:
+        # No exception message, which could quote the request's arguments.
+        logger.error("care_mcp: %s failed\n%s", method, redacted_traceback(e))
         return error_response(id_, INTERNAL_ERROR, "Internal error.")
     return {"jsonrpc": "2.0", "id": id_, "result": result}
