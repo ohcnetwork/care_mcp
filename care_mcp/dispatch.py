@@ -133,14 +133,14 @@ def call_api(
     request.user = user
 
     try:
-        view, args, kwargs = resolve(path)
+        match = resolve(path)
     except Resolver404:
         return APIResult(404, {"detail": f"No Care API route matches {path}"})
 
     try:
         # A savepoint per call, so a failed write leaves no partial database changes.
         with transaction.atomic():
-            response = view(request, *args, **kwargs)
+            response = match.func(request, *match.args, **match.kwargs)
             if hasattr(response, "data"):
                 data = _to_json(response.data)
             else:
@@ -150,6 +150,12 @@ def call_api(
                 # Undo anything a failing write view did before it errored.
                 transaction.set_rollback(True)
     except Exception:
-        logger.exception("care_mcp: internal API call failed: %s %s", method, path)
+        # The route's name rather than the path, whose segments are patient and
+        # encounter ids.
+        logger.exception(
+            "care_mcp: internal API call failed: %s %s",
+            method.upper(),
+            match.view_name,
+        )
         return APIResult(500, {"detail": "Care returned a server error."})
     return APIResult(response.status_code, data)

@@ -1,6 +1,7 @@
 from unittest import mock
 
 from django.test import override_settings
+from django.urls import reverse
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from care_mcp.protocol import SUPPORTED_PROTOCOL_VERSIONS
@@ -63,6 +64,14 @@ class MCPAuthenticationTests(MCPTestBase):
     def test_disabled(self):
         with plugin_config(CARE_MCP_ENABLED=False):
             self.assertEqual(self.rpc("ping", token=self.token).status_code, 404)
+
+    def test_config_accepts_service_account_tokens(self):
+        url = reverse("care-mcp-config")
+        for scheme in ("Token", "Bearer"):
+            response = self.client.get(url, HTTP_AUTHORIZATION=f"{scheme} {self.token}")
+            self.assertEqual(response.status_code, 200, scheme)
+            self.assertTrue(response.json()["endpoint"].endswith(self.url))
+        self.assertEqual(self.client.get(url).status_code, 401)
 
 
 class MCPProtocolTests(MCPTestBase):
@@ -233,6 +242,25 @@ class MCPProtocolTests(MCPTestBase):
         self.assertEqual(response.json()["error"]["code"], -32602)
         response = self.rpc("prompts/get", {"name": ["abc"]}, token=self.token)
         self.assertEqual(response.json()["error"]["code"], -32602)
+
+    def test_every_tool_call_is_logged_without_its_arguments(self):
+        account = self.create_service_account()
+        token = self.token_for(account)
+        with self.assertLogs("care_mcp.protocol", "INFO") as logs:
+            self.call_tool("search_operations", {"query": 5}, token=token)
+            self.rpc(
+                "tools/call",
+                {"name": "search_operations", "arguments": []},
+                token=token,
+            )
+            self.call_tool("search_operations", {"query": "allergy"}, token=token)
+        messages = [record.getMessage() for record in logs.records]
+        self.assertEqual(
+            [m.rsplit("outcome=", 1)[1] for m in messages], ["error", "error", "ok"]
+        )
+        for message in messages:
+            self.assertIn(f"user={account.external_id}", message)
+            self.assertNotIn("allergy", message)
 
     def test_truncates_long_results(self):
         with plugin_config(CARE_MCP_MAX_RESPONSE_CHARS=100):

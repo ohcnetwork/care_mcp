@@ -37,9 +37,11 @@ MCP client ──POST /api/care_mcp/mcp/──▶ MCPView (auth, origin check, r
   `2025-03-26`), answered with plain JSON. The server is stateless, so it works
   behind any number of gunicorn workers with no session store.
 - **Authentication:** a Care service-account token, sent as
-  `Authorization: Token <token>` (as for the rest of Care's API) or
+  `Authorization: Token <token>` (the form Care issues it in) or
   `Authorization: Bearer <token>` (for clients that only offer a bearer field).
-  A regular Care JWT also works, for clients built into Care's web app.
+  Both work even where Care's own API accepts only JWTs, as with Care's
+  production settings. A regular Care JWT also works, for clients built into
+  Care's web app.
 - **Read-only by default.** Operations that change data are hidden unless the
   operator sets `CARE_MCP_ALLOW_WRITES`.
 
@@ -212,9 +214,11 @@ Resolution order: `PLUGIN_CONFIGS["care_mcp"][key]` → environment variable →
 - Requests that carry an `Origin` header not in `CARE_MCP_ALLOWED_ORIGINS` are
   rejected, which stops a malicious web page from driving a local client's
   connection (DNS rebinding). Desktop and CLI clients send no `Origin`.
-- Every tool call is logged (`care_mcp` logger: tool, user, outcome; arguments are
-  not logged). Changes made through MCP run through Care's own views as the
-  service account, so Care records them as that account's.
+- Every call of one of the server's tools is logged, including calls with invalid
+  arguments (`care_mcp` logger: tool, user, outcome). Arguments and request paths
+  are not logged, since they hold patient and encounter ids.
+- Changes made through MCP run through Care's own views as the service account,
+  so Care records them as that account's.
 - When a write fails, its database changes are rolled back. Effects outside the
   database, such as files already stored or notifications already sent, are not.
 - Patient data leaves Care when an assistant reads it. Only connect clients and

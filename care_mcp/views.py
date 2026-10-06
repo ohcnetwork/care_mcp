@@ -30,12 +30,13 @@ from config.authentication import CustomJWTAuthentication
 MAX_BATCH_MESSAGES = 20
 
 
-class MCPView(APIView):
-    """The MCP endpoint (Streamable HTTP transport, JSON responses).
+class CareMCPView(APIView):
+    """Authenticates a service-account token (``Authorization: Token <token>`` or
+    ``Bearer <token>``) for MCP clients, or a Care JWT for clients running inside
+    Care's web app.
 
-    Authenticates like Care's own API: a service-account token
-    (``Authorization: Token <token>`` or ``Bearer <token>``) for MCP clients, or
-    a Care JWT for clients running inside Care's web app.
+    Set here rather than taken from Care's DEFAULT_AUTHENTICATION_CLASSES, which
+    Care's production settings narrow to JWTs only.
     """
 
     authentication_classes = [
@@ -44,6 +45,10 @@ class MCPView(APIView):
         TokenAuthentication,
     ]
     permission_classes = [IsAuthenticated]
+
+
+class MCPView(CareMCPView):
+    """The MCP endpoint (Streamable HTTP transport, JSON responses)."""
 
     def initial(self, request, *args, **kwargs):
         if not plugin_settings.CARE_MCP_ENABLED:
@@ -111,10 +116,8 @@ class MCPView(APIView):
         return JsonResponse(response)
 
 
-class ConfigView(APIView):
+class ConfigView(CareMCPView):
     """What a client (or Care's frontend) needs to connect."""
-
-    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         return Response(

@@ -1,5 +1,6 @@
 from unittest import mock
 
+from django.urls import ResolverMatch
 from model_bakery import baker
 
 from care.emr.models.allergy_intolerance import AllergyIntolerance
@@ -7,6 +8,7 @@ from care.emr.models.condition import Condition
 from care.security.permissions.encounter import EncounterPermissions
 from care.security.permissions.patient import PatientPermissions
 from care_mcp import openapi, tools
+from care_mcp.dispatch import call_api
 from care_mcp.openapi import operations
 from care_mcp.settings import DEFAULT_READ_ONLY_OPERATIONS, DEFAULT_TOOLS
 from care_mcp.tests.base import MCPTestBase, plugin_config
@@ -348,3 +350,26 @@ class WriteTests(MCPTestBase):
                 self.token,
             )
         self.assertTrue(result["isError"])
+
+
+class DispatchTests(MCPTestBase):
+    def test_failed_call_logs_the_route_not_the_path(self):
+        patient_id = "5a1c2b3d-0000-4000-8000-000000000001"
+
+        def failing_view(request, *args, **kwargs):
+            raise RuntimeError
+
+        match = ResolverMatch(
+            failing_view, (), {"external_id": patient_id}, url_name="patient-detail"
+        )
+        with (
+            mock.patch("care_mcp.dispatch.resolve", return_value=match),
+            self.assertLogs("care_mcp.dispatch", "ERROR") as logs,
+        ):
+            result = call_api(
+                self.create_user(), "get", f"/api/v1/patient/{patient_id}/"
+            )
+        self.assertEqual(result.status_code, 500)
+        message = logs.records[0].getMessage()
+        self.assertIn("GET patient-detail", message)
+        self.assertNotIn(patient_id, message)

@@ -180,23 +180,35 @@ def handle_tools_call(ctx, params):
     tool = next((t for t in available_tools(ctx) if t.name == name), None)
     if tool is None:
         raise JSONRPCError(INVALID_PARAMS, f"Unknown tool: {name}")
-    arguments = _as_object(params.get("arguments"), "Tool arguments")
+    outcome = "error"
+    try:
+        result = _call_tool(ctx, tool, params.get("arguments"))
+        if not result["isError"]:
+            outcome = "ok"
+        return result
+    finally:
+        # One line per call, however it ends. Arguments are left out: they hold
+        # patient and encounter ids.
+        logger.info(
+            "care_mcp tool=%s user=%s outcome=%s",
+            tool.name,
+            ctx.user.external_id,
+            outcome,
+        )
 
+
+def _call_tool(ctx, tool, arguments) -> dict:
+    arguments = _as_object(arguments, "Tool arguments")
     # Bad arguments are reported as a tool error, so the model can correct itself.
     if errors := validate_arguments(tool.input_schema, arguments):
         return _text_result("Invalid arguments:\n" + "\n".join(errors), is_error=True)
-
     try:
         output = tool.handler(ctx, arguments)
     except ToolError as e:
-        logger.info(
-            "care_mcp tool=%s user=%s outcome=error", name, ctx.user.external_id
-        )
         payload = {"error": e.message}
         if e.data is not None:
             payload["details"] = e.data
         return _text_result(payload, is_error=True)
-    logger.info("care_mcp tool=%s user=%s outcome=ok", name, ctx.user.external_id)
     if not isinstance(output, ToolOutput):
         output = ToolOutput(output)
     return _text_result(output.data, notes=output.notes)
