@@ -30,6 +30,12 @@ from config.authentication import CustomJWTAuthentication
 MAX_BATCH_MESSAGES = 20
 
 
+def _reject_non_finite(constant):
+    # NaN and Infinity are not JSON, though Python's json module accepts them.
+    msg = f"{constant} is not valid JSON."
+    raise ValueError(msg)
+
+
 class CareMCPView(APIView):
     """Authenticates a service-account token (``Authorization: Token <token>`` or
     ``Bearer <token>``) for MCP clients, or a Care JWT for clients running inside
@@ -85,8 +91,8 @@ class MCPView(CareMCPView):
 
     def post(self, request, *args, **kwargs):
         try:
-            payload = json.loads(request.body)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = json.loads(request.body, parse_constant=_reject_non_finite)
+        except ValueError:  # malformed JSON or UTF-8, or NaN/Infinity
             return JsonResponse(
                 error_response(None, PARSE_ERROR, "Parse error."), status=400
             )

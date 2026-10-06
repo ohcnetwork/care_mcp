@@ -119,14 +119,19 @@ class MCPProtocolTests(MCPTestBase):
         self.assertEqual(response.status_code, 400)
 
     def test_parse_error(self):
-        response = self.client.post(
-            self.url,
+        for body in (
             "{not json",
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Token {self.token}",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"]["code"], -32700)
+            '{"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"n": NaN}}',
+            '{"jsonrpc": "2.0", "id": 1, "method": "ping", "params": {"n": -Infinity}}',
+        ):
+            response = self.client.post(
+                self.url,
+                body,
+                content_type="application/json",
+                HTTP_AUTHORIZATION=f"Token {self.token}",
+            )
+            self.assertEqual(response.status_code, 400, body)
+            self.assertEqual(response.json()["error"]["code"], -32700, body)
 
     def test_method_not_found(self):
         response = self.rpc("resources/subscribe", token=self.token)
