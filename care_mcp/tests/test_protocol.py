@@ -179,6 +179,30 @@ class MCPProtocolTests(MCPTestBase):
         )
         self.assertEqual(response.json()["error"]["code"], -32602)
 
+    def test_params_and_arguments_must_be_objects(self):
+        for value in ([], "", 0, False):
+            response = self.rpc("ping", value, token=self.token)
+            self.assertEqual(response.json()["error"]["code"], -32602, value)
+            response = self.rpc(
+                "tools/call",
+                {"name": "search_operations", "arguments": value},
+                token=self.token,
+            )
+            self.assertEqual(response.json()["error"]["code"], -32602, value)
+
+    def test_null_params_and_arguments_mean_none_given(self):
+        response = self.post(
+            {"jsonrpc": "2.0", "id": 1, "method": "ping", "params": None},
+            token=self.token,
+        )
+        self.assertEqual(response.json()["result"], {})
+        response = self.rpc(
+            "tools/call",
+            {"name": "users_getcurrentuser_retrieve", "arguments": None},
+            token=self.token,
+        )
+        self.assertFalse(response.json()["result"]["isError"])
+
     def test_prompts(self):
         prompts = self.rpc("prompts/list", token=self.token).json()["result"]
         self.assertIn("patient_summary", {p["name"] for p in prompts["prompts"]})

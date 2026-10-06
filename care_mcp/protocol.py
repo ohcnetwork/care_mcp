@@ -134,6 +134,15 @@ def _truncate(text: str) -> str:
     return text
 
 
+def _as_object(value: Any, what: str) -> dict:
+    """An optional object member of a message: absent or null means empty."""
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise JSONRPCError(INVALID_PARAMS, f"{what} must be an object.")
+    return value
+
+
 def _text_result(data: Any, *, is_error: bool = False, notes=()) -> dict:
     text = data if isinstance(data, str) else json.dumps(data, separators=(",", ":"))
     content = [{"type": "text", "text": _truncate(text)}]
@@ -163,12 +172,10 @@ def handle_tools_list(ctx, params):
 
 def handle_tools_call(ctx, params):
     name = params.get("name")
-    arguments = params.get("arguments") or {}
     tool = next((t for t in available_tools(ctx) if t.name == name), None)
     if tool is None:
         raise JSONRPCError(INVALID_PARAMS, f"Unknown tool: {name}")
-    if not isinstance(arguments, dict):
-        raise JSONRPCError(INVALID_PARAMS, "Tool arguments must be an object.")
+    arguments = _as_object(params.get("arguments"), "Tool arguments")
 
     # Bad arguments are reported as a tool error, so the model can correct itself.
     if errors := validate_arguments(tool.input_schema, arguments):
@@ -209,9 +216,7 @@ def handle_prompts_get(ctx, params):
     prompt = PROMPTS.get(name)
     if prompt is None:
         raise JSONRPCError(INVALID_PARAMS, f"Unknown prompt: {name}")
-    arguments = params.get("arguments") or {}
-    if not isinstance(arguments, dict):
-        raise JSONRPCError(INVALID_PARAMS, "Prompt arguments must be an object.")
+    arguments = _as_object(params.get("arguments"), "Prompt arguments")
     missing = [
         a["name"]
         for a in prompt["arguments"]
@@ -271,11 +276,8 @@ def handle_message(ctx: ToolContext, message: Any) -> dict | None:  # noqa: PLR0
     handler = METHODS.get(method)
     if handler is None:
         return error_response(id_, METHOD_NOT_FOUND, f"Method not found: {method}")
-    params = message.get("params") or {}
-    if not isinstance(params, dict):
-        return error_response(id_, INVALID_PARAMS, "params must be an object.")
     try:
-        result = handler(ctx, params)
+        result = handler(ctx, _as_object(message.get("params"), "params"))
     except JSONRPCError as e:
         return error_response(id_, e.code, e.message, e.data)
     except Exception:

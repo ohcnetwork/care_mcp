@@ -138,7 +138,7 @@ def call_api(
         return APIResult(404, {"detail": f"No Care API route matches {path}"})
 
     try:
-        # A savepoint per call, so a failed write leaves nothing half-done.
+        # A savepoint per call, so a failed write leaves no partial database changes.
         with transaction.atomic():
             response = view(request, *args, **kwargs)
             if hasattr(response, "data"):

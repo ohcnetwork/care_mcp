@@ -215,7 +215,8 @@ Resolution order: `PLUGIN_CONFIGS["care_mcp"][key]` → environment variable →
 - Every tool call is logged (`care_mcp` logger: tool, user, outcome; arguments are
   not logged). Changes made through MCP run through Care's own views as the
   service account, so Care records them as that account's.
-- A failed write is rolled back, so an error leaves nothing half-done.
+- When a write fails, its database changes are rolled back. Effects outside the
+  database, such as files already stored or notifications already sent, are not.
 - Patient data leaves Care when an assistant reads it. Only connect clients and
   model providers your deployment's data-protection rules allow.
 
